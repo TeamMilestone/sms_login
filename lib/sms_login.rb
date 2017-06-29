@@ -16,11 +16,11 @@ module SmsLogin
     session[:phone_number] = phone_number
   end
 
-  def sign_in_with_sms_login_token(token)
+  def sign_in_with_sms_login_token(token, scope_model=nil)
     user = User.find_by(sms_login_token: token)
     if user && (user.sms_login_token_created_at - Time.now.getgm) < (60 * 5)
       if defined?(Devise)
-        replace_devise_credential_with(user)
+        replace_devise_credential_with(user, scope_model)
       else
         session[:user_id] = user.id
       end
@@ -29,11 +29,11 @@ module SmsLogin
     end
   end
 
-  def sign_in_with_sms_login_code(code, phone_number)
+  def sign_in_with_sms_login_code(code, phone_number, scope_model=nil)
     user = User.find_by(sms_login_code: code, phone: phone_number)
     if user && (user.sms_login_code_created_at - Time.now.getgm) < (60 * 2)
       if defined?(Devise)
-        replace_devise_credential_with(user)
+        replace_devise_credential_with(user, scope_model)
       else
         session[:user_id] = user.id
       end
@@ -93,16 +93,24 @@ module SmsLogin
     "로그인 코드: #{login_code}"
   end
 
-  private 
-  def replace_devise_credential_with(user)
-    sign_out_of_devise
-    request.env['warden'].set_user(user)
+  private
+  def replace_devise_credential_with(user, scope_model=nil)
+    sign_out_of_devise(scope_model)
+    if scope_model.nil?
+      request.env['warden'].set_user(user)
+    else
+      request.env['warden'].set_user(user, scope: scope_model)
+    end
   end
 
   # 디바이스에서 로그아웃 용으로 사용하는 sign_out_all_scopes 메서드 소스에서 가져온 코드입니다.
-  # https://github.com/plataformatec/devise/blob/master/lib/devise/controllers/sign_in_out.rb 
-  def sign_out_of_devise
-    request.env['warden'].logout
+  # https://github.com/plataformatec/devise/blob/master/lib/devise/controllers/sign_in_out.rb
+  def sign_out_of_devise(scope_model=nil)
+    if scope_model.nil?
+      request.env['warden'].logout
+    else
+      request.env['warden'].logout(scope_model)
+    end
     session.empty?
     session.keys.grep(/^devise\./).each { |k| session.delete(k) }
     request.env['warden'].clear_strategies_cache!
